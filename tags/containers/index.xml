@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>containers on Terminal</title>
+    <link>/tags/containers/</link>
+    <description>Recent content in containers on Terminal</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Wed, 01 Feb 2023 16:13:41 +0300</lastBuildDate><atom:link href="/tags/containers/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Windows Container Internals - Prep</title>
+      <link>/posts/windows-container-internals-prep/</link>
+      <pubDate>Wed, 01 Feb 2023 16:13:41 +0300</pubDate>
+      
+      <guid>/posts/windows-container-internals-prep/</guid>
+      <description>I would like to kick off a step-by-step series that takes us through the journey of understanding the internals of Windows Containers. Notice I say us because it is a journey that I&amp;rsquo;m also taking.
+Before we begin the journey, let&amp;rsquo;s get a few things out of the way:
+// TBD</description>
+      <content>&lt;p&gt;I would like to kick off a step-by-step series that takes &lt;strong&gt;us&lt;/strong&gt; through the journey of understanding the internals of &lt;a href=&#34;https://learn.microsoft.com/en-us/virtualization/windowscontainers/about/&#34;&gt;Windows Containers&lt;/a&gt;. Notice I say &lt;em&gt;us&lt;/em&gt; because it is a journey that I&amp;rsquo;m also taking.&lt;/p&gt;
+&lt;p&gt;Before we begin the journey, let&amp;rsquo;s get a few things out of the way:&lt;/p&gt;
+&lt;p&gt;// TBD&lt;/p&gt;
+</content>
+    </item>
+    
+  </channel>
+</rss>
