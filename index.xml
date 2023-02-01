@@ -8,6 +8,22 @@
     <language>en-us</language>
     <lastBuildDate>Wed, 01 Feb 2023 16:13:41 +0300</lastBuildDate><atom:link href="/index.xml" rel="self" type="application/rss+xml" />
     <item>
+      <title>Credits</title>
+      <link>/credits/</link>
+      <pubDate>Wed, 01 Feb 2023 19:37:49 +0300</pubDate>
+      
+      <guid>/credits/</guid>
+      <description>Roll the credits!
+Site powered by Hugo Site theme originally designed by @panr </description>
+      <content>&lt;p&gt;&lt;em&gt;Roll the credits!&lt;/em&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Site powered by &lt;a href=&#34;http://gohugo.io/&#34;&gt;Hugo&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/panr/hugo-theme-terminal&#34;&gt;Site theme&lt;/a&gt; originally designed by &lt;a href=&#34;https://github.com/panr&#34;&gt;@panr&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</content>
+    </item>
+    
+    <item>
       <title>Windows Container Internals - Prep</title>
       <link>/posts/windows-container-internals-prep/</link>
       <pubDate>Wed, 01 Feb 2023 16:13:41 +0300</pubDate>
@@ -28,12 +44,47 @@ Before we begin the journey, let&amp;rsquo;s get a few things out of the way:
       <pubDate>Wed, 01 Feb 2023 16:02:40 +0300</pubDate>
       
       <guid>/about/</guid>
-      <description>About Join us on a life-long journey into understanding the internals of systems. We will mainly be focusing around the Windows and Linux internals, but not limited to that.
+      <description>Join us on a life-long journey into understanding the internals of systems. We will mainly be focusing around the Windows and Linux internals, but not limited to that.
 If you would like to contribute to the blog, feel free to open a PR here with the content in markdown.</description>
-      <content>&lt;h1 id=&#34;about&#34;&gt;About&lt;/h1&gt;
-&lt;p&gt;Join us on a life-long journey into understanding the internals of systems.
+      <content>&lt;p&gt;Join us on a life-long journey into understanding the internals of systems.
 We will mainly be focusing around the Windows and Linux internals, but not limited to that.&lt;/p&gt;
 &lt;p&gt;&lt;em&gt;If you would like to contribute to the blog, feel free to &lt;a href=&#34;https://github.com/krnl-to/blog-content&#34;&gt;open a PR here&lt;/a&gt; with the content in markdown.&lt;/em&gt;&lt;/p&gt;
+</content>
+    </item>
+    
+    <item>
+      <title>Bookmarks</title>
+      <link>/bookmarks/</link>
+      <pubDate>Wed, 01 Feb 2023 15:12:46 +0300</pubDate>
+      
+      <guid>/bookmarks/</guid>
+      <description> ℹ️ I&amp;rsquo;ll just be posting here random links to resources and documentations that I find along my traversal of the web. Keep checking, more will be added.
+Windows Internals Blog: Pavel Yosifovich Windows Containers Internals TBD Linux Containers Internals Book: Understand Container by Bin Chen Linux Internals LinuxFromScratch (LFS) Project TBD Others build-your-own-x </description>
+      <content>&lt;blockquote&gt;
+&lt;p&gt;ℹ️ &lt;em&gt;I&amp;rsquo;ll just be posting here random links to resources and documentations that I find along my traversal of the web.&lt;/em&gt;
+&lt;em&gt;Keep checking, more will be added.&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id=&#34;windows-internals&#34;&gt;Windows Internals&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://scorpiosoftware.net/&#34;&gt;Blog: Pavel Yosifovich&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;windows-containers-internals&#34;&gt;Windows Containers Internals&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;TBD&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;linux-containers-internals&#34;&gt;Linux Containers Internals&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://leanpub.com/understand-container&#34;&gt;Book: Understand Container by Bin Chen&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;linux-internals&#34;&gt;Linux Internals&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://linuxfromscratch.org/lfs/&#34;&gt;LinuxFromScratch (LFS) Project&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;TBD&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id=&#34;others&#34;&gt;Others&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/codecrafters-io/build-your-own-x&#34;&gt;&lt;code&gt;build-your-own-x&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
 </content>
     </item>
     

@@ -1,10 +1,7 @@
 ---
 title: "Bookmarks"
 date: 2023-02-01T15:12:46+03:00
-draft: true
 ---
-
-# Bookmarks
 
 > ℹ️ _I'll just be posting here random links to resources and documentations that I find along my traversal of the web._
 > _Keep checking, more will be added._
