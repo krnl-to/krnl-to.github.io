@@ -65,11 +65,11 @@ paginate = 5
 [languages]
   [languages.en]
     languageName = "English"
-    title = "Terminal"
-    subtitle = "A simple, retro theme for Hugo"
-    owner = ""
-    keywords = ""
-    copyright = ""
+    title = "krnl.to"
+    subtitle = "// internals"
+    owner = "Anthony Nandaa"
+    keywords = "windows,linux,containers,kernel"
+    copyright = "Anthony Nandaa"
     menuMore = "Show more"
     readMore = "Read more"
     readOtherPosts = "Read other posts"
@@ -79,7 +79,7 @@ paginate = 5
     missingBackButtonLabel = "Back to home page"
 
     [languages.en.params.logo]
-      logoText = "Terminal"
+      logoText = "krnl.to"
       logoHomeLink = "/"
 
     [languages.en.menu]
