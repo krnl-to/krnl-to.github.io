@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Posts on krnl.to</title>
-    <link>/posts/</link>
-    <description>Recent content in Posts on krnl.to</description>
+    <title>linux on krnl.to</title>
+    <link>/tags/linux/</link>
+    <description>Recent content in linux on krnl.to</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Anthony Nandaa</copyright>
-    <lastBuildDate>Mon, 06 Feb 2023 14:03:52 +0300</lastBuildDate><atom:link href="/posts/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 06 Feb 2023 14:03:52 +0300</lastBuildDate><atom:link href="/tags/linux/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Linux Containers Intro: chroot</title>
       <link>/posts/linux-containers-intro-chroot/</link>
@@ -79,24 +79,6 @@ bash-5.1#
 &lt;li&gt;&lt;a href=&#34;https://medium.com/100-days-of-linux/chroot-a-linux-wonder-fc36ed08087e&#34;&gt;https://medium.com/100-days-of-linux/chroot-a-linux-wonder-fc36ed08087e&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;https://btholt.github.io/complete-intro-to-containers/chroot&#34;&gt;https://btholt.github.io/complete-intro-to-containers/chroot&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
-</content>
-    </item>
-    
-    <item>
-      <title>Windows Container Internals - Prep</title>
-      <link>/posts/windows-container-internals-prep/</link>
-      <pubDate>Wed, 01 Feb 2023 16:13:41 +0300</pubDate>
-      
-      <guid>/posts/windows-container-internals-prep/</guid>
-      <description>Before we kick off this series, let&amp;rsquo;s take a detour first and look at Linux Containers first. Start here: Linux Containers Intro: chroot.
-I would like to kick off a step-by-step series that takes us through the journey of understanding the internals of Windows Containers. Notice I say us because it is a journey that I&amp;rsquo;m also taking.
-Before we begin the journey, let&amp;rsquo;s get a few things out of the way:</description>
-      <content>&lt;blockquote&gt;
-&lt;p&gt;Before we kick off this series, let&amp;rsquo;s take a detour first and look at Linux Containers first. Start here: &lt;a href=&#34;/posts/linux-containers-intro-chroot&#34;&gt;Linux Containers Intro: &lt;code&gt;chroot&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
-&lt;/blockquote&gt;
-&lt;p&gt;I would like to kick off a step-by-step series that takes &lt;strong&gt;us&lt;/strong&gt; through the journey of understanding the internals of &lt;a href=&#34;https://learn.microsoft.com/en-us/virtualization/windowscontainers/about/&#34;&gt;Windows Containers&lt;/a&gt;. Notice I say &lt;em&gt;us&lt;/em&gt; because it is a journey that I&amp;rsquo;m also taking.&lt;/p&gt;
-&lt;p&gt;Before we begin the journey, let&amp;rsquo;s get a few things out of the way:&lt;/p&gt;
-&lt;p&gt;// TBD&lt;/p&gt;
 </content>
     </item>
     

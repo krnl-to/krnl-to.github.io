@@ -7,17 +7,94 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Anthony Nandaa</copyright>
-    <lastBuildDate>Wed, 01 Feb 2023 16:13:41 +0300</lastBuildDate><atom:link href="/tags/containers/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 06 Feb 2023 14:03:52 +0300</lastBuildDate><atom:link href="/tags/containers/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Linux Containers Intro: chroot</title>
+      <link>/posts/linux-containers-intro-chroot/</link>
+      <pubDate>Mon, 06 Feb 2023 14:03:52 +0300</pubDate>
+      
+      <guid>/posts/linux-containers-intro-chroot/</guid>
+      <description>Edited by Ishuah Kariuki
+Intro to Linux Containers Internals: chroot Pitch By the end of this post, we will appreciate the idea of a container, within the Linux context. For most people, when you mention containers, the first thing that comes to mind is Docker. What if I told you that containers have nothing to do with Docker; instead it is the other way round.
+Actually, this series will introduce Linux container internals without ever using Docker, just to pass the point across.</description>
+      <content>&lt;p&gt;&lt;em&gt;Edited by &lt;a href=&#34;https://ishuah.com/&#34;&gt;Ishuah Kariuki&lt;/a&gt;&lt;/em&gt;&lt;/p&gt;
+&lt;h1 id=&#34;intro-to-linux-containers-internals-chroot&#34;&gt;Intro to Linux Containers Internals: &lt;code&gt;chroot&lt;/code&gt;&lt;/h1&gt;
+&lt;h2 id=&#34;pitch&#34;&gt;Pitch&lt;/h2&gt;
+&lt;p&gt;By the end of this post, we will appreciate the idea of a &lt;em&gt;container&lt;/em&gt;, within the Linux context. For most people, when you mention containers, the first thing that comes to mind is Docker. What if I told you that containers have nothing to do with Docker; instead it is the other way round.&lt;/p&gt;
+&lt;p&gt;Actually, this series will introduce Linux container internals without ever using Docker, just to pass the point across.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;ℹ️ &lt;strong&gt;NOTE:&lt;/strong&gt; all the examples below are based on &lt;code&gt;Ubuntu 22.04.1 LTS&lt;/code&gt; running on &lt;a href=&#34;https://learn.microsoft.com/en-us/windows/wsl/about&#34;&gt;Windows Subsystem for Linux&lt;/a&gt; (WSL2). However, you can still run this on any Linux distro (VM or machine).
+&lt;img src=&#34;https://user-images.githubusercontent.com/261265/216800823-0f522fc5-eea1-4fc4-98c0-302c951cf1a6.png&#34; alt=&#34;image&#34;&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;h2 id=&#34;enter-chroot&#34;&gt;Enter &lt;code&gt;chroot&lt;/code&gt;&lt;/h2&gt;
+&lt;p&gt;Create a directory, e.g. &lt;code&gt;container_intro&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;mkdir container_intro
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Add a simple file to the directory:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;echo &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;CONTAINER&amp;#34;&lt;/span&gt; &amp;gt; container_intro/CONTAINER_ROOT
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Let&amp;rsquo;s try to &lt;code&gt;chroot&lt;/code&gt; into the directory:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;sudo chroot container_intro
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;You will get this error: &lt;code&gt;chroot: failed to run command ‘/bin/bash’: No such file or directory&lt;/code&gt;. This means that we are can get into this directory and use as our root &lt;code&gt;/&lt;/code&gt;, when we try to execute &lt;code&gt;bash&lt;/code&gt; which should be in &lt;code&gt;/bin/bash&lt;/code&gt;, it is not found.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;First hack:&lt;/strong&gt; let&amp;rsquo;s copy &lt;code&gt;/bin/bash&lt;/code&gt; (and one more command &lt;code&gt;ls&lt;/code&gt; that we will run too afterwards) from the current system to our directory:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;mkdir container_intro/bin
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;cp /bin/bash /bin/ls container_intro/bin
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Now back to &lt;code&gt;chroot&lt;/code&gt;:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;sudo chroot container_into
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Still not working! This is because &lt;code&gt;bash&lt;/code&gt; has dependancy on other libraries. Let&amp;rsquo;s view them:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;ldd /bin/bash
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;    linux-vdso.so.1 (0x00007ffe20ff5000)
+    libtinfo.so.6 =&amp;gt; /lib/x86_64-linux-gnu/libtinfo.so.6 (0x00007fdbf1438000)
+    libc.so.6 =&amp;gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007fdbf1210000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007fdbf15d2000)
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Let&amp;rsquo;s go ahead and copy them into our directory:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;mkdir container_intro/lib&lt;span style=&#34;color:#f92672&#34;&gt;{&lt;/span&gt;,64&lt;span style=&#34;color:#f92672&#34;&gt;}&lt;/span&gt; &lt;span style=&#34;color:#75715e&#34;&gt;# creates both lib and lib64&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;cp /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libc.so.6 container_intro/lib
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;cp /lib64/ld-linux-x86-64.so.2 container_intro/lib64
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Let&amp;rsquo;s do the same for &lt;code&gt;ls&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;ldd /bin/ls
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;    linux-vdso.so.1 (0x00007ffcccf2f000)
+    libselinux.so.1 =&amp;gt; /lib/x86_64-linux-gnu/libselinux.so.1 (0x00007f932a5fc000)
+    libc.so.6 =&amp;gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007f932a3d4000)
+    libpcre2-8.so.0 =&amp;gt; /lib/x86_64-linux-gnu/libpcre2-8.so.0 (0x00007f932a33d000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007f932a653000)
+&lt;/code&gt;&lt;/pre&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;cp /lib/x86_64-linux-gnu/libselinux.so.1 /lib/x86_64-linux-gnu/libc.so.6 &lt;span style=&#34;color:#ae81ff&#34;&gt;\
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#ae81ff&#34;&gt;&lt;/span&gt;    /lib/x86_64-linux-gnu/libpcre2-8.so.0 container_intro/lib
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;cp /lib64/ld-linux-x86-64.so.2 container_intro/lib64
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Finally, back to our &lt;code&gt;chroot&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;sudo chroot container_intro
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;And we are in! We should see the prompt:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;bash-5.1#
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Let&amp;rsquo;s run &lt;code&gt;ls&lt;/code&gt;:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;bash-5.1# ls
+CONTAINER_ROOT  bin  lib  lib64
+bash-5.1#
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Now, essentially, we are &lt;strong&gt;contained&lt;/strong&gt; within that directory as our whole world (file system). As far as we are concerned, we can&amp;rsquo;t jump out of it.&lt;/p&gt;
+&lt;h2 id=&#34;next-episode-spoiler-alert&#34;&gt;Next Episode: Spoiler Alert&lt;/h2&gt;
+&lt;p&gt;We have looked at a hacky solution for getting only two processes: &lt;code&gt;bash&lt;/code&gt; and &lt;code&gt;ls&lt;/code&gt; up and running. In the next episode, we will look at setting up a full &lt;em&gt;filesystem&lt;/em&gt;. For the eager learners, you can check out &lt;a href=&#34;https://manpages.debian.org/stretch/debootstrap/debootstrap.8.en.html&#34;&gt;&lt;code&gt;debootstrap&lt;/code&gt;&lt;/a&gt;. See you next!&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;Thanks for reading this far. If you followed this walkthrough hands-on, here is a &lt;a href=&#34;https://www.youtube.com/watch?v=kIjExHdnx2E&#34;&gt;small gift for you&lt;/a&gt;!&lt;/em&gt; 😀&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;!-- raw HTML omitted --&gt;
+&lt;p&gt;&lt;strong&gt;Footnote / Further Reading:&lt;/strong&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://medium.com/100-days-of-linux/chroot-a-linux-wonder-fc36ed08087e&#34;&gt;https://medium.com/100-days-of-linux/chroot-a-linux-wonder-fc36ed08087e&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://btholt.github.io/complete-intro-to-containers/chroot&#34;&gt;https://btholt.github.io/complete-intro-to-containers/chroot&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</content>
+    </item>
+    
     <item>
       <title>Windows Container Internals - Prep</title>
       <link>/posts/windows-container-internals-prep/</link>
       <pubDate>Wed, 01 Feb 2023 16:13:41 +0300</pubDate>
       
       <guid>/posts/windows-container-internals-prep/</guid>
-      <description>I would like to kick off a step-by-step series that takes us through the journey of understanding the internals of Windows Containers. Notice I say us because it is a journey that I&amp;rsquo;m also taking.
-Before we begin the journey, let&amp;rsquo;s get a few things out of the way:
-// TBD</description>
-      <content>&lt;p&gt;I would like to kick off a step-by-step series that takes &lt;strong&gt;us&lt;/strong&gt; through the journey of understanding the internals of &lt;a href=&#34;https://learn.microsoft.com/en-us/virtualization/windowscontainers/about/&#34;&gt;Windows Containers&lt;/a&gt;. Notice I say &lt;em&gt;us&lt;/em&gt; because it is a journey that I&amp;rsquo;m also taking.&lt;/p&gt;
+      <description>Before we kick off this series, let&amp;rsquo;s take a detour first and look at Linux Containers first. Start here: Linux Containers Intro: chroot.
+I would like to kick off a step-by-step series that takes us through the journey of understanding the internals of Windows Containers. Notice I say us because it is a journey that I&amp;rsquo;m also taking.
+Before we begin the journey, let&amp;rsquo;s get a few things out of the way:</description>
+      <content>&lt;blockquote&gt;
+&lt;p&gt;Before we kick off this series, let&amp;rsquo;s take a detour first and look at Linux Containers first. Start here: &lt;a href=&#34;/posts/linux-containers-intro-chroot&#34;&gt;Linux Containers Intro: &lt;code&gt;chroot&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;I would like to kick off a step-by-step series that takes &lt;strong&gt;us&lt;/strong&gt; through the journey of understanding the internals of &lt;a href=&#34;https://learn.microsoft.com/en-us/virtualization/windowscontainers/about/&#34;&gt;Windows Containers&lt;/a&gt;. Notice I say &lt;em&gt;us&lt;/em&gt; because it is a journey that I&amp;rsquo;m also taking.&lt;/p&gt;
 &lt;p&gt;Before we begin the journey, let&amp;rsquo;s get a few things out of the way:&lt;/p&gt;
 &lt;p&gt;// TBD&lt;/p&gt;
 </content>

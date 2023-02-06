@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Linux Containers Intro: chroot :: krnl.to</title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Introduction to Linux Containers: chroot" />
+<meta name="keywords" content="linux, containers, chroot" />
+<meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/linux-containers-intro-chroot/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="/img/theme-colors/orange.png">
+  <link rel="apple-touch-icon" href="/img/theme-colors/orange.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+  
+    <meta name="twitter:site" content="" />
+  
+    <meta name="twitter:creator" content="Anthony Nandaa" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Linux Containers Intro: chroot">
+<meta property="og:description" content="Introduction to Linux Containers: chroot" />
+<meta property="og:url" content="/posts/linux-containers-intro-chroot/" />
+<meta property="og:site_name" content="krnl.to" />
+
+  
+  
+  <meta property="og:image" content="/">
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2023-02-06 14:03:52 &#43;0300 EAT" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="orange">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="/">
+  <div class="logo">
+    <strong>krnl</strong>.to
+  </div>
+</a>
+
+    </div>
+    
+      <ul class="menu menu--mobile">
+  <li class="menu__trigger">Menu&nbsp;▾</li>
+  <li>
+    <ul class="menu__dropdown">
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+        
+          <li><a href="/credits">Credits</a></li>
+        
+      
+      
+    </ul>
+  </li>
+</ul>
+
+    
+    
+  </div>
+  
+    <nav class="navigation-menu">
+  <ul class="navigation-menu__inner menu--desktop">
+    
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+      
+        <li>
+          <ul class="menu">
+            <li class="menu__trigger">Show more&nbsp;▾</li>
+            <li>
+              <ul class="menu__dropdown">
+                
+                  
+                    <li><a href="/credits">Credits</a></li>
+                  
+                
+              </ul>
+            </li>
+          </ul>
+        </li>
+      
+    
+  </ul>
+</nav>
+
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/linux-containers-intro-chroot/">Linux Containers Intro: chroot</a>
+  </h1>
+  <div class="post-meta">
+    
+      <time class="post-date">
+        2023-02-06 //
+        
+      </time>
+    
+    
+      <span class="post-author">Anthony Nandaa</span>
+    
+    
+  </div>
+
+  
+    <span class="post-tags">
+      
+      #<a href="/tags/linux/">linux</a>&nbsp;
+      
+      #<a href="/tags/containers/">containers</a>&nbsp;
+      
+      #<a href="/tags/lci-series/">lci-series</a>&nbsp;
+      
+    </span>
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <p><em>Edited by <a href="https://ishuah.com/">Ishuah Kariuki</a></em></p>
+<h1 id="intro-to-linux-containers-internals-chroot">Intro to Linux Containers Internals: <code>chroot</code><a href="#intro-to-linux-containers-internals-chroot" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<h2 id="pitch">Pitch<a href="#pitch" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>By the end of this post, we will appreciate the idea of a <em>container</em>, within the Linux context. For most people, when you mention containers, the first thing that comes to mind is Docker. What if I told you that containers have nothing to do with Docker; instead it is the other way round.</p>
+<p>Actually, this series will introduce Linux container internals without ever using Docker, just to pass the point across.</p>
+<blockquote>
+<p>ℹ️ <strong>NOTE:</strong> all the examples below are based on <code>Ubuntu 22.04.1 LTS</code> running on <a href="https://learn.microsoft.com/en-us/windows/wsl/about">Windows Subsystem for Linux</a> (WSL2). However, you can still run this on any Linux distro (VM or machine).
+<img src="https://user-images.githubusercontent.com/261265/216800823-0f522fc5-eea1-4fc4-98c0-302c951cf1a6.png" alt="image"></p>
+</blockquote>
+<h2 id="enter-chroot">Enter <code>chroot</code><a href="#enter-chroot" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>Create a directory, e.g. <code>container_intro</code>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir container_intro
+</span></span></code></pre></div><p>Add a simple file to the directory:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>echo <span style="color:#e6db74">&#34;CONTAINER&#34;</span> &gt; container_intro/CONTAINER_ROOT
+</span></span></code></pre></div><p>Let&rsquo;s try to <code>chroot</code> into the directory:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo chroot container_intro
+</span></span></code></pre></div><p>You will get this error: <code>chroot: failed to run command ‘/bin/bash’: No such file or directory</code>. This means that we are can get into this directory and use as our root <code>/</code>, when we try to execute <code>bash</code> which should be in <code>/bin/bash</code>, it is not found.</p>
+<p><strong>First hack:</strong> let&rsquo;s copy <code>/bin/bash</code> (and one more command <code>ls</code> that we will run too afterwards) from the current system to our directory:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir container_intro/bin
+</span></span><span style="display:flex;"><span>cp /bin/bash /bin/ls container_intro/bin
+</span></span></code></pre></div><p>Now back to <code>chroot</code>:</p>
+<pre tabindex="0"><code>sudo chroot container_into
+</code></pre><p>Still not working! This is because <code>bash</code> has dependancy on other libraries. Let&rsquo;s view them:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ldd /bin/bash
+</span></span></code></pre></div><pre tabindex="0"><code>    linux-vdso.so.1 (0x00007ffe20ff5000)
+    libtinfo.so.6 =&gt; /lib/x86_64-linux-gnu/libtinfo.so.6 (0x00007fdbf1438000)
+    libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007fdbf1210000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007fdbf15d2000)
+</code></pre><p>Let&rsquo;s go ahead and copy them into our directory:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir container_intro/lib<span style="color:#f92672">{</span>,64<span style="color:#f92672">}</span> <span style="color:#75715e"># creates both lib and lib64</span>
+</span></span><span style="display:flex;"><span>cp /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libc.so.6 container_intro/lib
+</span></span><span style="display:flex;"><span>cp /lib64/ld-linux-x86-64.so.2 container_intro/lib64
+</span></span></code></pre></div><p>Let&rsquo;s do the same for <code>ls</code>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ldd /bin/ls
+</span></span></code></pre></div><pre tabindex="0"><code>    linux-vdso.so.1 (0x00007ffcccf2f000)
+    libselinux.so.1 =&gt; /lib/x86_64-linux-gnu/libselinux.so.1 (0x00007f932a5fc000)
+    libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6 (0x00007f932a3d4000)
+    libpcre2-8.so.0 =&gt; /lib/x86_64-linux-gnu/libpcre2-8.so.0 (0x00007f932a33d000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007f932a653000)
+</code></pre><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>cp /lib/x86_64-linux-gnu/libselinux.so.1 /lib/x86_64-linux-gnu/libc.so.6 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    /lib/x86_64-linux-gnu/libpcre2-8.so.0 container_intro/lib
+</span></span><span style="display:flex;"><span>cp /lib64/ld-linux-x86-64.so.2 container_intro/lib64
+</span></span></code></pre></div><p>Finally, back to our <code>chroot</code>:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo chroot container_intro
+</span></span></code></pre></div><p>And we are in! We should see the prompt:</p>
+<pre tabindex="0"><code>bash-5.1#
+</code></pre><p>Let&rsquo;s run <code>ls</code>:</p>
+<pre tabindex="0"><code>bash-5.1# ls
+CONTAINER_ROOT  bin  lib  lib64
+bash-5.1#
+</code></pre><p>Now, essentially, we are <strong>contained</strong> within that directory as our whole world (file system). As far as we are concerned, we can&rsquo;t jump out of it.</p>
+<h2 id="next-episode-spoiler-alert">Next Episode: Spoiler Alert<a href="#next-episode-spoiler-alert" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>We have looked at a hacky solution for getting only two processes: <code>bash</code> and <code>ls</code> up and running. In the next episode, we will look at setting up a full <em>filesystem</em>. For the eager learners, you can check out <a href="https://manpages.debian.org/stretch/debootstrap/debootstrap.8.en.html"><code>debootstrap</code></a>. See you next!</p>
+<blockquote>
+<p><em>Thanks for reading this far. If you followed this walkthrough hands-on, here is a <a href="https://www.youtube.com/watch?v=kIjExHdnx2E">small gift for you</a>!</em> 😀</p>
+</blockquote>
+<!-- raw HTML omitted -->
+<p><strong>Footnote / Further Reading:</strong></p>
+<ul>
+<li><a href="https://medium.com/100-days-of-linux/chroot-a-linux-wonder-fc36ed08087e">https://medium.com/100-days-of-linux/chroot-a-linux-wonder-fc36ed08087e</a></li>
+<li><a href="https://btholt.github.io/complete-intro-to-containers/chroot">https://btholt.github.io/complete-intro-to-containers/chroot</a></li>
+</ul>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h">Read other posts</span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        
+        <span class="button next">
+            <a href="/posts/windows-container-internals-prep/">
+                <span class="button__text">Windows Container Internals - Prep</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+   <small id="quote">___<br/><em>"The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise."</em> &mdash;&mdash; Edsger W. Dijkstra</small>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+<script>
+
+
+let quotes = [
+  {
+    say: "The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "We should forget about small efficiencies, say about 97% of the time: premature optimization is the root of all evil",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Simplicity and elegance are unpopular because they require hard work and discipline to achieve and education to be appreciated.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "Beauty is our business.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "The unavoidable price of reliability is simplicity.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "I call it my billion-dollar mistake. It was the invention of the null reference in 1965.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Inside every large program is a small program struggling to get out.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "You cannot teach beginners top-down programming, because they don't know which end is up.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Talk is cheap, show me the code.",
+    person: "Linus Torvalds"
+  },
+  {
+    say: "Computers are good at following instructions, but not at reading your mind.",
+    person: "Donald Knuth"
+  },
+  {
+    say: "Make everything as simple as possible but not simpler.",
+    person: "Albert Einstein"
+  },
+  {
+    say: "One of my most productive days was throwing away 1,000 lines of code.",
+    person: "Ken Thompson"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "It's hardware that makes a machine fast. It's software that makes a fast machine slow.",
+    person: "Craig Reucassel"
+  },
+  {
+    say: "There's an old story about the person who wished his computer were as easy to use as his telephone. That wish has come true, since I no longer know how to use my telephone.",
+    person: "Bjarne Stroustrup"
+  },
+]
+
+let i = (new Date()).getSeconds() % quotes.length
+let quote = quotes[i]
+
+document.querySelector("small#quote").setHTML(`___<br/><em>"${quote.say}"</em> &mdash;&mdash; ${quote.person}`)
+</script>
+
+
+
+
+  
+</div>
+
+</body>
+</html>
