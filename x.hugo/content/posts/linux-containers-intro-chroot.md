@@ -47,9 +47,9 @@ Let's try to `chroot` into the directory:
 sudo chroot container_intro
 ```
 
-You will get this error: `chroot: failed to run command ‘/bin/bash’: No such file or directory`. This means that we are can get into this directory and use as our root `/`, when we try to execute `bash` which should be in `/bin/bash`, it is not found.
+You will get this error: `chroot: failed to run command ‘/bin/bash’: No such file or directory`. This means that we can get into this directory and use it as our root `/`, when we try to execute `bash` which should be in `/bin/bash`, it is not found.
 
-**First hack:** let's copy `/bin/bash` (and one more command `ls` that we will run too afterwards) from the current system to our directory:
+Let's copy `/bin/bash` (and one more command `ls`, that we will run afterwards) from the current system to our directory:
 
 ```bash
 mkdir container_intro/bin
@@ -77,7 +77,8 @@ Let's go ahead and copy them into our directory:
 
 ```bash
 mkdir container_intro/lib{,64} # creates both lib and lib64
-cp /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libc.so.6 container_intro/lib
+cp /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libc.so.6 \
+    container_intro/lib
 cp /lib64/ld-linux-x86-64.so.2 container_intro/lib64
 ```
 

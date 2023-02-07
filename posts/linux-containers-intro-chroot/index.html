@@ -203,8 +203,8 @@
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>echo <span style="color:#e6db74">&#34;CONTAINER&#34;</span> &gt; container_intro/CONTAINER_ROOT
 </span></span></code></pre></div><p>Let&rsquo;s try to <code>chroot</code> into the directory:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo chroot container_intro
-</span></span></code></pre></div><p>You will get this error: <code>chroot: failed to run command ‘/bin/bash’: No such file or directory</code>. This means that we are can get into this directory and use as our root <code>/</code>, when we try to execute <code>bash</code> which should be in <code>/bin/bash</code>, it is not found.</p>
-<p><strong>First hack:</strong> let&rsquo;s copy <code>/bin/bash</code> (and one more command <code>ls</code> that we will run too afterwards) from the current system to our directory:</p>
+</span></span></code></pre></div><p>You will get this error: <code>chroot: failed to run command ‘/bin/bash’: No such file or directory</code>. This means that we can get into this directory and use it as our root <code>/</code>, when we try to execute <code>bash</code> which should be in <code>/bin/bash</code>, it is not found.</p>
+<p>Let&rsquo;s copy <code>/bin/bash</code> (and one more command <code>ls</code>, that we will run afterwards) from the current system to our directory:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir container_intro/bin
 </span></span><span style="display:flex;"><span>cp /bin/bash /bin/ls container_intro/bin
 </span></span></code></pre></div><p>Now back to <code>chroot</code>:</p>
@@ -217,7 +217,8 @@
     /lib64/ld-linux-x86-64.so.2 (0x00007fdbf15d2000)
 </code></pre><p>Let&rsquo;s go ahead and copy them into our directory:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>mkdir container_intro/lib<span style="color:#f92672">{</span>,64<span style="color:#f92672">}</span> <span style="color:#75715e"># creates both lib and lib64</span>
-</span></span><span style="display:flex;"><span>cp /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libc.so.6 container_intro/lib
+</span></span><span style="display:flex;"><span>cp /lib/x86_64-linux-gnu/libtinfo.so.6 /lib/x86_64-linux-gnu/libc.so.6 <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    container_intro/lib
 </span></span><span style="display:flex;"><span>cp /lib64/ld-linux-x86-64.so.2 container_intro/lib64
 </span></span></code></pre></div><p>Let&rsquo;s do the same for <code>ls</code>:</p>
 <div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ldd /bin/ls
