@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Linux Container Intro Chroot Again :: krnl.to</title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Part 2 of chroot, using a full file system as opposed to the hacky solution we used in part 1." />
+<meta name="keywords" content="linux, containers, chroot" />
+<meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/linux-container-intro-chroot-again/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="/img/theme-colors/orange.png">
+  <link rel="apple-touch-icon" href="/img/theme-colors/orange.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+  
+    <meta name="twitter:site" content="" />
+  
+    <meta name="twitter:creator" content="profnandaa" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Linux Container Intro Chroot Again">
+<meta property="og:description" content="Part 2 of chroot, using a full file system as opposed to the hacky solution we used in part 1." />
+<meta property="og:url" content="/posts/linux-container-intro-chroot-again/" />
+<meta property="og:site_name" content="krnl.to" />
+
+  
+  
+  <meta property="og:image" content="/">
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2023-02-11 17:31:07 &#43;0300 EAT" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="orange">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="/">
+  <div class="logo">
+    <strong>krnl</strong>.to
+  </div>
+</a>
+
+    </div>
+    
+      <ul class="menu menu--mobile">
+  <li class="menu__trigger">Menu&nbsp;▾</li>
+  <li>
+    <ul class="menu__dropdown">
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+        
+          <li><a href="/credits">Credits</a></li>
+        
+      
+      
+    </ul>
+  </li>
+</ul>
+
+    
+    
+  </div>
+  
+    <nav class="navigation-menu">
+  <ul class="navigation-menu__inner menu--desktop">
+    
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+      
+        <li>
+          <ul class="menu">
+            <li class="menu__trigger">Show more&nbsp;▾</li>
+            <li>
+              <ul class="menu__dropdown">
+                
+                  
+                    <li><a href="/credits">Credits</a></li>
+                  
+                
+              </ul>
+            </li>
+          </ul>
+        </li>
+      
+    
+  </ul>
+</nav>
+
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/linux-container-intro-chroot-again/">Linux Container Intro Chroot Again</a>
+  </h1>
+  <div class="post-meta">
+    
+      <time class="post-date">
+        2023-02-11 //
+        
+      </time>
+    
+    
+      <span class="post-author">Anthony Nandaa</span>
+    
+    
+  </div>
+
+  
+    <span class="post-tags">
+      
+      #<a href="/tags/linux/">linux</a>&nbsp;
+      
+      #<a href="/tags/containers/">containers</a>&nbsp;
+      
+      #<a href="/tags/lci-series/">lci-series</a>&nbsp;
+      
+    </span>
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <h1 id="intro-to-linux-containers-internals-chroot-again">Intro to Linux Containers Internals: <code>chroot</code> Again<a href="#intro-to-linux-containers-internals-chroot-again" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>In our <a href="../linux-containers-intro-chroot/">last post</a> of the series <a href="/tags/lci-series/">#lci-series</a>, we scratched the surface of what <code>chroot</code> does. It was great to get some feedback on how this lit some light bulbs. We can now agree on the definition that <em>a container is a set of 1 or more processes isolated from the rest of the system.</em> We saw this when we could isolate <code>ls</code> and <code>bash</code> just within our <code>container-intro</code> directory. This was just one aspect of isolation - filesystem isolation.</p>
+<blockquote>
+<p>By the way, <code>chroot</code> was introduced in Unix around 1979. That&rsquo;s how old this concept is, and that marked the early beginnings of containers as we know them today. You can read more about the history here - <a href="https://blog.aquasec.com/a-brief-history-of-containers-from-1970s-chroot-to-docker-2016">A Brief History of Containers: From the 1970s Till Now</a>.</p>
+</blockquote>
+<p>In this series, we would like to explore <code>chroot</code> further, this time with a <em>full</em> filesystem, as opposed to the hacky approach we used previously.</p>
+<p>On your Linux system, start by installing <a href="https://manpages.debian.org/stretch/debootstrap/debootstrap.8.en.html"><code>debootstrap</code></a>.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo apt install -y binutils debootstrap
+</span></span></code></pre></div><p>Next, let&rsquo;s create our directory for the <em>root filesystem</em>. If you are using WSL on Windows like me, make sure you are working from the linux filesystem and not the &ldquo;Windows mount&rdquo;, i.e. <code>/mnt/c/...</code>. Therefore, you can <code>cd $HOME</code> and work from there.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># assuming you are in $HOME</span>
+</span></span><span style="display:flex;"><span>sudo mkdir ubuntufs
+</span></span></code></pre></div><p>Let&rsquo;s use <code>debootstrap</code> to create a Ubuntu 22.04 (<code>jammy</code>).</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># jammy is the name for Ubuntu 22.04, see https://wiki.ubuntu.com/Releases</span>
+</span></span><span style="display:flex;"><span>sudo debootstrap --arch amd64 jammy ./ubuntufs http://archive.ubuntu.com/ubuntu
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># after running, the last lins should read something like:</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># ...</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># I: Base system installed successfully.</span>
+</span></span></code></pre></div><blockquote>
+<p>ℹ️ <strong>Note:</strong> another way of getting a filesystem without using <code>debootstrap</code> is exporting a Docker container and then extracting it with <code>tar</code>, e.g. <code>docker export $(docker create ubuntu) | tar -C rootfs -xvf -</code>. However, we said we don&rsquo;t want to use Docker for demystification.</p>
+</blockquote>
+<p>Now let&rsquo;s <code>chroot</code> into the directory:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo chroot ubuntufs
+</span></span></code></pre></div><p>And we are in:</p>
+<pre tabindex="0"><code>root@nandaa-x1:/# ls
+bin boot dev etc home lib lib32 ...
+</code></pre><p>Let&rsquo;s run <code>ps</code> to list processes, however, you will need to first <em>mount</em> <code>/proc</code>.</p>
+<pre tabindex="0"><code>root@nandaa-x1:/# ps
+Error, do this: mount -t proc proc /proc
+root@nandaa-x1:/# mount -t proc proc /proc
+
+root@nandaa-x1:/# ps aux
+USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root         1  0.0  0.0   1744  1080 ?        Sl   15:27   0:00 /init
+root         7  0.0  0.0   1752    68 ?        Ss   15:27   0:00 /init
+root         8  0.0  0.0   1752    76 ?        S    15:27   0:00 /init
+1000         9  0.0  0.0   6332  5368 ?        Ss   15:27   0:00 -bash
+root     14351  0.0  0.0   8912  5564 ?        R+   15:55   0:00 sudo chroot co
+root     14352  0.0  0.0   8912   880 ?        Ss   15:55   0:00 sudo chroot co
+root     14353  0.0  0.0   5040  4000 ?        S    15:55   0:00 /bin/bash -i
+root     14365  0.0  0.0   1752    68 ?        Ss   15:58   0:00 /init
+root     14366  0.0  0.0   1752    76 ?        S    15:58   0:00 /init
+1000     14367  0.0  0.0   6072  5180 ?        Ss+  15:58   0:00 -bash
+root     14380  0.0  0.0   7784  3300 ?        R+   15:58   0:00 ps aux
+</code></pre><p>In a new tab, if you ran <code>ps aux</code> on the main system, you should see a similar output. This is because we have not yet achieved <em>namespace isolation</em>, only <em>filesystem isolation</em>. We will cover <em>namespace isolation</em> in our next episode.</p>
+<blockquote>
+<p><em>Thanks for reading this far; here is <a href="https://www.youtube.com/watch?v=KFxPr-_v3AI">another small gift for you</a></em> 🙂</p>
+</blockquote>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h">Read other posts</span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        
+        <span class="button next">
+            <a href="/posts/linux-containers-intro-chroot/">
+                <span class="button__text">Linux Containers Intro: chroot</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+   <small id="quote">___<br/><em>"The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise."</em> &mdash;&mdash; Edsger W. Dijkstra</small>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+<script>
+
+
+let quotes = [
+  {
+    say: "The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "We should forget about small efficiencies, say about 97% of the time: premature optimization is the root of all evil",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Simplicity and elegance are unpopular because they require hard work and discipline to achieve and education to be appreciated.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "Beauty is our business.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "The unavoidable price of reliability is simplicity.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "I call it my billion-dollar mistake. It was the invention of the null reference in 1965.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Inside every large program is a small program struggling to get out.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "You cannot teach beginners top-down programming, because they don't know which end is up.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Talk is cheap, show me the code.",
+    person: "Linus Torvalds"
+  },
+  {
+    say: "Computers are good at following instructions, but not at reading your mind.",
+    person: "Donald Knuth"
+  },
+  {
+    say: "Make everything as simple as possible but not simpler.",
+    person: "Albert Einstein"
+  },
+  {
+    say: "One of my most productive days was throwing away 1,000 lines of code.",
+    person: "Ken Thompson"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "It's hardware that makes a machine fast. It's software that makes a fast machine slow.",
+    person: "Craig Reucassel"
+  },
+  {
+    say: "There's an old story about the person who wished his computer were as easy to use as his telephone. That wish has come true, since I no longer know how to use my telephone.",
+    person: "Bjarne Stroustrup"
+  },
+]
+
+let i = (new Date()).getSeconds() % quotes.length
+let quote = quotes[i]
+
+document.querySelector("small#quote").setHTML(`___<br/><em>"${quote.say}"</em> &mdash;&mdash; ${quote.person}`)
+</script>
+
+
+
+
+  
+</div>
+
+</body>
+</html>
