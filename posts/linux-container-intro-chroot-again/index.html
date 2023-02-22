@@ -213,6 +213,9 @@
 <pre tabindex="0"><code>root@nandaa-x1:/# ls
 bin boot dev etc home lib lib32 ...
 </code></pre><p>Let&rsquo;s run <code>ps</code> to list processes, however, you will need to first <em>mount</em> <code>/proc</code>.</p>
+<blockquote>
+<p><code>/proc</code> is a virtual filesystem, sometimes referred to as a <em>process information pseudo-file system</em>; that contains runtime system information (e.g. system memory, devices mounted, hardware configuration, etc). You can <a href="https://tldp.org/LDP/Linux-Filesystem-Hierarchy/html/proc.html">read more about it here</a>.</p>
+</blockquote>
 <pre tabindex="0"><code>root@nandaa-x1:/# ps
 Error, do this: mount -t proc proc /proc
 root@nandaa-x1:/# mount -t proc proc /proc

@@ -61,6 +61,8 @@ bin boot dev etc home lib lib32 ...
 
 Let's run `ps` to list processes, however, you will need to first _mount_ `/proc`.
 
+> `/proc` is a virtual filesystem, sometimes referred to as a _process information pseudo-file system_; that contains runtime system information (e.g. system memory, devices mounted, hardware configuration, etc). You can [read more about it here](https://tldp.org/LDP/Linux-Filesystem-Hierarchy/html/proc.html).
+
 ```
 root@nandaa-x1:/# ps
 Error, do this: mount -t proc proc /proc
