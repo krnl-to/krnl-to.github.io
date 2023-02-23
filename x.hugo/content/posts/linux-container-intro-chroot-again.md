@@ -1,5 +1,5 @@
 +++
-title = "Linux Container Intro Chroot Again"
+title = "Linux Containers Internals: chroot Again"
 date = "2023-02-11T17:31:07+03:00"
 author = "Anthony Nandaa"
 authorTwitter = "profnandaa" #do not include @

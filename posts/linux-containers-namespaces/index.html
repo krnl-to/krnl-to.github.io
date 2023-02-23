@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Linux Containers Internals: Namespaces :: krnl.to</title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Introducing the concept of Linux namespaces" />
+<meta name="keywords" content="linux, containers, chroot, unshare, namespaces" />
+<meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/linux-containers-namespaces/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="/img/theme-colors/orange.png">
+  <link rel="apple-touch-icon" href="/img/theme-colors/orange.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+  
+    <meta name="twitter:site" content="" />
+  
+    <meta name="twitter:creator" content="ishuah_" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Linux Containers Internals: Namespaces">
+<meta property="og:description" content="Introducing the concept of Linux namespaces" />
+<meta property="og:url" content="/posts/linux-containers-namespaces/" />
+<meta property="og:site_name" content="krnl.to" />
+
+  
+  
+  <meta property="og:image" content="/">
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2023-02-22 12:28:31 &#43;0300 EAT" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="orange">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="/">
+  <div class="logo">
+    <strong>krnl</strong>.to
+  </div>
+</a>
+
+    </div>
+    
+      <ul class="menu menu--mobile">
+  <li class="menu__trigger">Menu&nbsp;▾</li>
+  <li>
+    <ul class="menu__dropdown">
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+        
+          <li><a href="/credits">Credits</a></li>
+        
+      
+      
+    </ul>
+  </li>
+</ul>
+
+    
+    
+  </div>
+  
+    <nav class="navigation-menu">
+  <ul class="navigation-menu__inner menu--desktop">
+    
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+      
+        <li>
+          <ul class="menu">
+            <li class="menu__trigger">Show more&nbsp;▾</li>
+            <li>
+              <ul class="menu__dropdown">
+                
+                  
+                    <li><a href="/credits">Credits</a></li>
+                  
+                
+              </ul>
+            </li>
+          </ul>
+        </li>
+      
+    
+  </ul>
+</nav>
+
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/linux-containers-namespaces/">Linux Containers Internals: Namespaces</a>
+  </h1>
+  <div class="post-meta">
+    
+      <time class="post-date">
+        2023-02-22 //
+        
+      </time>
+    
+    
+      <span class="post-author">Ishuah Kariuki</span>
+    
+    
+  </div>
+
+  
+    <span class="post-tags">
+      
+      #<a href="/tags/linux/">linux</a>&nbsp;
+      
+      #<a href="/tags/containers/">containers</a>&nbsp;
+      
+      #<a href="/tags/lci-series/">lci-series</a>&nbsp;
+      
+    </span>
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <h1 id="intro-to-linux-containers-internals-namespaces">Intro to Linux Containers Internals: namespaces<a href="#intro-to-linux-containers-internals-namespaces" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>In our <a href="../linux-container-intro-chroot-again/">last post</a> of the series <a href="/tags/lci-series/">#lci-series</a>, we ran a container using chroot and a complete filesystem. We managed to isolate <code>ls</code> and <code>bash</code> within our <code>container-intro</code> directory. However, <code>ps aux</code> lists all the processes on the host environment because we didn&rsquo;t implement <code>namespace</code> isolation. This article will focus on namespaces. Why they exist and how to implement them in our container.</p>
+<h2 id="working-without-namespaces">Working Without Namespaces<a href="#working-without-namespaces" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>We&rsquo;ll start by demonstrating the perils of using <code>chroot</code> without namespaces. If you don&rsquo;t have it running already, fire up the container from <a href="../linux-container-intro-chroot-again/">Linux Containers Intro: Chroot Again</a> and mount the <code>proc</code> filesystem.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ sudo chroot ubuntufs
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># once you&#39;re in the container, mount proc with the next command</span>
+</span></span><span style="display:flex;"><span>$ mount -t proc proc /proc
+</span></span></code></pre></div><p>Let&rsquo;s start a foreground process on your host environment.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this on the host</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># you can tail any of the log files in /var</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># there&#39;s nothing special with bootstrap.log :)</span>
+</span></span><span style="display:flex;"><span>tail -f /var/log/bootstrap.log
+</span></span></code></pre></div><p>Run <code>ps aux</code> on your container.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>root@container:/# ps aux
+</span></span><span style="display:flex;"><span>USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+</span></span><span style="display:flex;"><span>root         <span style="color:#ae81ff">1</span>  0.0  0.0   <span style="color:#ae81ff">2276</span>  <span style="color:#ae81ff">1536</span> ?        Sl   08:38   0:00 /init
+</span></span><span style="display:flex;"><span>root         <span style="color:#ae81ff">4</span>  0.0  0.0   <span style="color:#ae81ff">2276</span>     <span style="color:#ae81ff">4</span> ?        Sl   08:38   0:00 plan9 --control-socket <span style="color:#ae81ff">5</span> --log-level
+</span></span><span style="display:flex;"><span>root         <span style="color:#ae81ff">7</span>  0.0  0.0   <span style="color:#ae81ff">2280</span>   <span style="color:#ae81ff">104</span> ?        Ss   08:38   0:00 /init
+</span></span><span style="display:flex;"><span>root         <span style="color:#ae81ff">8</span>  0.0  0.0   <span style="color:#ae81ff">2296</span>   <span style="color:#ae81ff">108</span> ?        R    08:38   0:00 /init
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1000</span>         <span style="color:#ae81ff">9</span>  0.0  0.0   <span style="color:#ae81ff">6340</span>  <span style="color:#ae81ff">5280</span> ?        Ss   08:38   0:00 -bash
+</span></span><span style="display:flex;"><span>root        <span style="color:#ae81ff">47</span>  0.0  0.0   <span style="color:#ae81ff">2280</span>   <span style="color:#ae81ff">104</span> ?        Ss   08:47   0:00 /init
+</span></span><span style="display:flex;"><span>root        <span style="color:#ae81ff">48</span>  0.0  0.0   <span style="color:#ae81ff">2296</span>   <span style="color:#ae81ff">108</span> ?        S    08:47   0:00 /init
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1000</span>        <span style="color:#ae81ff">49</span>  0.0  0.0   <span style="color:#ae81ff">6340</span>  <span style="color:#ae81ff">5392</span> ?        Ss   08:47   0:00 -bash
+</span></span><span style="display:flex;"><span>root     <span style="color:#ae81ff">13975</span>  0.0  0.0   <span style="color:#ae81ff">8920</span>  <span style="color:#ae81ff">5340</span> ?        R+   08:58   0:00 sudo chroot ubuntufs
+</span></span><span style="display:flex;"><span>root     <span style="color:#ae81ff">13976</span>  0.0  0.0   <span style="color:#ae81ff">8920</span>   <span style="color:#ae81ff">884</span> ?        Ss   08:58   0:00 sudo chroot ubuntufs
+</span></span><span style="display:flex;"><span>root     <span style="color:#ae81ff">13977</span>  0.0  0.0   <span style="color:#ae81ff">5040</span>  <span style="color:#ae81ff">4048</span> ?        S    08:58   0:00 /bin/bash -i
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1000</span>     <span style="color:#ae81ff">14184</span>  0.0  0.0   <span style="color:#ae81ff">3236</span>  <span style="color:#ae81ff">1100</span> ?        S+   12:33   0:00 tail -f /var/log/bootstrap.log
+</span></span><span style="display:flex;"><span>root     <span style="color:#ae81ff">14185</span>  0.0  0.0   <span style="color:#ae81ff">7784</span>  <span style="color:#ae81ff">3396</span> ?        R+   12:37   0:00 ps aux
+</span></span></code></pre></div><p>As we saw in the last post, this command lists all the processes in the host environment. One of these processes is the foreground process we started on the host system. In my example, the process has a PID of <code>14184</code>. Let&rsquo;s kill this process from the container.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this from the container</span>
+</span></span><span style="display:flex;"><span>kill <span style="color:#ae81ff">14184</span>
+</span></span></code></pre></div><p>What happens next? The tail process in the host environment gets terminated! Are you scared yet? There&rsquo;s more. Let&rsquo;s check the hostname on your host environment:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>ishuah@h0st-5ys:~$ hostname
+</span></span><span style="display:flex;"><span>h0st-5ys
+</span></span></code></pre></div><p>Running the same command in your container will yield the same hostname. Let&rsquo;s change the hostname in the container.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run these commands in your container</span>
+</span></span><span style="display:flex;"><span>root@container:/# hostname
+</span></span><span style="display:flex;"><span>h0st-5ys
+</span></span><span style="display:flex;"><span>root@container:/# hostname newh0stname
+</span></span><span style="display:flex;"><span>root@container:/# hostname
+</span></span><span style="display:flex;"><span>newh0stname
+</span></span></code></pre></div><p>We&rsquo;ve successfully changed the hostname in the container to <code>newh0stname</code>. Now check the hostname on the host system.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>ishuah@h0st-5ys:~$ hostname
+</span></span><span style="display:flex;"><span>newh0stname
+</span></span></code></pre></div><p>What happened? Changing the hostname on the container affected the host env - they share the same hostname!</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this in the container and the host</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># the namespace ids are the same in both envs</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># i.e &#39;ipc:[4026532271]&#39; -&gt; &#39;namespace:[id]&#39;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>$ ls -l /proc/$$/ns
+</span></span><span style="display:flex;"><span>total <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 cgroup -&gt; <span style="color:#e6db74">&#39;cgroup:[4026531835]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 ipc -&gt; <span style="color:#e6db74">&#39;ipc:[4026532271]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 mnt -&gt; <span style="color:#e6db74">&#39;mnt:[4026532282]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 net -&gt; <span style="color:#e6db74">&#39;net:[4026531840]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 pid -&gt; <span style="color:#e6db74">&#39;pid:[4026532284]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 pid_for_children -&gt; <span style="color:#e6db74">&#39;pid:[4026532284]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 user -&gt; <span style="color:#e6db74">&#39;user:[4026531837]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 16:37 uts -&gt; <span style="color:#e6db74">&#39;uts:[4026532283]&#39;</span>
+</span></span></code></pre></div><blockquote>
+<p>Namespaces are a Linux kernel feature that partitions kernel resources to create isolated environments within a Linux system. <a href="https://man7.org/linux/man-pages/man7/namespaces.7.html">You can read more about namespaces here</a>.</p>
+</blockquote>
+<p>The host env and the container share <a href="https://man7.org/linux/man-pages/man7/namespaces.7.html">namespaces</a>. That&rsquo;s why you can see the host&rsquo;s PIDs (<a href="https://man7.org/linux/man-pages/man7/pid_namespaces.7.html"><code>pid</code> namespace</a>) and change the hostname (<a href="https://man7.org/linux/man-pages/man7/uts_namespaces.7.html"><code>uts</code> namespace</a>) from the container.</p>
+<h2 id="implementing-namespaces-with-unshare">Implementing Namespaces with <code>unshare</code><a href="#implementing-namespaces-with-unshare" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>Close your container and create a new one with the following command:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>sudo unshare --mount --uts --ipc --net --pid --user --fork --map-root-user chroot ubuntufs
+</span></span></code></pre></div><p><a href="https://man7.org/linux/man-pages/man1/unshare.1.html"><code>Unshare</code></a> is a Linux utility package that allows you to run a program with some namespaces &lsquo;unshared&rsquo; from its parent. The command above creates a container similar to previous runs, except now we have isolated namespaces. The <code>--mount --uts --ipc --net --pid --user</code> flags instruct unshare to execute chroot in new namespaces, see summary details below from the Linux docs. I didn&rsquo;t include the <code>cgroup</code> namespace here - we&rsquo;ll go through it in the next installment of this series.</p>
+<p><img src="https://user-images.githubusercontent.com/321040/220844132-79460e05-4370-4557-8fbd-8eb995bd7078.png" alt="image"></p>
+<p>Let&rsquo;s check the namespaces in both environments.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># on the host</span>
+</span></span><span style="display:flex;"><span>ls -l /proc/$$/ns
+</span></span><span style="display:flex;"><span>total <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 cgroup -&gt; <span style="color:#e6db74">&#39;cgroup:[4026531835]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 ipc -&gt; <span style="color:#e6db74">&#39;ipc:[4026532271]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 mnt -&gt; <span style="color:#e6db74">&#39;mnt:[4026532282]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 net -&gt; <span style="color:#e6db74">&#39;net:[4026531840]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 pid -&gt; <span style="color:#e6db74">&#39;pid:[4026532284]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 pid_for_children -&gt; <span style="color:#e6db74">&#39;pid:[4026532284]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 user -&gt; <span style="color:#e6db74">&#39;user:[4026531837]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> ishuah ishuah <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 17:06 uts -&gt; <span style="color:#e6db74">&#39;uts:[4026532283]&#39;</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># on the container</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># mount the proc filesystem first</span>
+</span></span><span style="display:flex;"><span> mount -t proc proc /proc
+</span></span><span style="display:flex;"><span> 
+</span></span><span style="display:flex;"><span> <span style="color:#75715e"># then check the namespaces</span>
+</span></span><span style="display:flex;"><span>ls -l /proc/$$/ns
+</span></span><span style="display:flex;"><span>total <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 cgroup -&gt; <span style="color:#e6db74">&#39;cgroup:[4026531835]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 ipc -&gt; <span style="color:#e6db74">&#39;ipc:[4026532328]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 mnt -&gt; <span style="color:#e6db74">&#39;mnt:[4026532326]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 net -&gt; <span style="color:#e6db74">&#39;net:[4026532330]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 pid -&gt; <span style="color:#e6db74">&#39;pid:[4026532329]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 pid_for_children -&gt; <span style="color:#e6db74">&#39;pid:[4026532329]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 user -&gt; <span style="color:#e6db74">&#39;user:[4026532325]&#39;</span>
+</span></span><span style="display:flex;"><span>lrwxrwxrwx <span style="color:#ae81ff">1</span> root root <span style="color:#ae81ff">0</span> Feb <span style="color:#ae81ff">22</span> 14:05 uts -&gt; <span style="color:#e6db74">&#39;uts:[4026532327]&#39;</span>
+</span></span></code></pre></div><p>The two environments don&rsquo;t share namespaces anymore! (Except for <code>cgroup</code>, we&rsquo;ll get into that later).</p>
+<p>Running the <code>ps</code> and <code>hostname</code> demos will now yield different results.</p>
+<p>On the container, <code>px aux</code> now only lists processes within that environment.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>ps aux
+</span></span><span style="display:flex;"><span>USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+</span></span><span style="display:flex;"><span>root         <span style="color:#ae81ff">1</span>  0.0  0.0   <span style="color:#ae81ff">5040</span>  <span style="color:#ae81ff">3820</span> ?        S    16:17   0:00 /bin/bash -i
+</span></span><span style="display:flex;"><span>root        <span style="color:#ae81ff">11</span>  0.0  0.0   <span style="color:#ae81ff">7476</span>  <span style="color:#ae81ff">3092</span> ?        R+   16:19   0:00 ps aux
+</span></span></code></pre></div><p>Try running our <code>hostname</code> demo:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run these commands in the chroot&#39;s env</span>
+</span></span><span style="display:flex;"><span>root@container:/# hostname newh0stname
+</span></span><span style="display:flex;"><span>root@container:/# hostname
+</span></span><span style="display:flex;"><span>newh0stname
+</span></span></code></pre></div><p>Then check the host env hostname:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>ishuah@h0st-5ys:~$ hostname
+</span></span><span style="display:flex;"><span>h0st-5ys
+</span></span></code></pre></div><p>Hostname changes on the container are limited to that environment. The host is not affected.</p>
+<p>We&rsquo;ve created a namespaced container - Which means we have <strong>namespace isolation</strong> for the processes running in the container.</p>
+<h3 id="next-episode-spoiler-alert">Next Episode: Spoiler Alert<a href="#next-episode-spoiler-alert" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h3>
+<p>The isolated environments still have access to all physical resources on your computer. That means your namespaced container can hog all the available RAM and CPU cycles with reckless abandon. In the next episode, we&rsquo;ll use <code>cgroups</code> to isolate resource usage for a group of tasks.</p>
+<blockquote>
+<p><em>Thanks for reading this far. As culture dictates, here is a <a href="https://www.youtube.com/watch?v=jiiFzKfuPMk">small gift for you</a>!</em> 😀</p>
+</blockquote>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h">Read other posts</span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        
+        <span class="button next">
+            <a href="/posts/linux-container-intro-chroot-again/">
+                <span class="button__text">Linux Containers Internals: chroot Again</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+   <small id="quote">___<br/><em>"The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise."</em> &mdash;&mdash; Edsger W. Dijkstra</small>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+<script>
+
+
+let quotes = [
+  {
+    say: "The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "We should forget about small efficiencies, say about 97% of the time: premature optimization is the root of all evil",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Simplicity and elegance are unpopular because they require hard work and discipline to achieve and education to be appreciated.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "Beauty is our business.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "The unavoidable price of reliability is simplicity.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "I call it my billion-dollar mistake. It was the invention of the null reference in 1965.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Inside every large program is a small program struggling to get out.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "You cannot teach beginners top-down programming, because they don't know which end is up.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Talk is cheap, show me the code.",
+    person: "Linus Torvalds"
+  },
+  {
+    say: "Computers are good at following instructions, but not at reading your mind.",
+    person: "Donald Knuth"
+  },
+  {
+    say: "Make everything as simple as possible but not simpler.",
+    person: "Albert Einstein"
+  },
+  {
+    say: "One of my most productive days was throwing away 1,000 lines of code.",
+    person: "Ken Thompson"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "It's hardware that makes a machine fast. It's software that makes a fast machine slow.",
+    person: "Craig Reucassel"
+  },
+  {
+    say: "There's an old story about the person who wished his computer were as easy to use as his telephone. That wish has come true, since I no longer know how to use my telephone.",
+    person: "Bjarne Stroustrup"
+  },
+]
+
+let i = (new Date()).getSeconds() % quotes.length
+let quote = quotes[i]
+
+document.querySelector("small#quote").setHTML(`___<br/><em>"${quote.say}"</em> &mdash;&mdash; ${quote.person}`)
+</script>
+
+
+
+
+  
+</div>
+
+</body>
+</html>
