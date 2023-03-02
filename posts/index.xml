@@ -7,7 +7,106 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Anthony Nandaa</copyright>
-    <lastBuildDate>Wed, 22 Feb 2023 12:28:31 +0300</lastBuildDate><atom:link href="/posts/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 01 Mar 2023 11:14:02 +0300</lastBuildDate><atom:link href="/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Linux Containers Internals: Cgroups</title>
+      <link>/posts/linux-containers-cgroups/</link>
+      <pubDate>Wed, 01 Mar 2023 11:14:02 +0300</pubDate>
+      
+      <guid>/posts/linux-containers-cgroups/</guid>
+      <description>Intro to Linux Containers Internals: cgroups This post marks the fourth entry in the #lci-series. In our last post, we achieved namespace isolation for the processes running in our container. However, these processes have access to all the available physical resources. For instance, a long-running process can use up all the available memory. This article will explore how to sandbox our container to a limited set of physical resources (RAM, CPU).</description>
+      <content>&lt;h1 id=&#34;intro-to-linux-containers-internals-cgroups&#34;&gt;Intro to Linux Containers Internals: cgroups&lt;/h1&gt;
+&lt;p&gt;This post marks the fourth entry in the &lt;a href=&#34;/tags/lci-series/&#34;&gt;#lci-series&lt;/a&gt;. In our &lt;a href=&#34;../linux-containers-namespaces/&#34;&gt;last post&lt;/a&gt;, we achieved namespace isolation for the processes running in our container. However, these processes have access to all the available physical resources. For instance, a long-running process can use up all the available memory. This article will explore how to sandbox our container to a limited set of physical resources (RAM, CPU).&lt;/p&gt;
+&lt;h2 id=&#34;working-without-control-groups&#34;&gt;Working Without Control Groups&lt;/h2&gt;
+&lt;p&gt;Let&amp;rsquo;s first understand why cgroups exist. We&amp;rsquo;ll start by installing and running htop on our host.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this on the host&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo apt-get install htop
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# after htop is installed, run it as root&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# this is so that you can kill rogue processes on the container&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo htop
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;If your container is not running, start it by running this command in a separate terminal session. (This is the command from &lt;a href=&#34;../linux-containers-namespaces/&#34;&gt;Linux Containers Internals: Namespaces&lt;/a&gt;)&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo unshare --mount --uts --ipc --net --pid --user --fork --map-root-user chroot ubuntufs
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# once you&amp;#39;re in the container, mount proc with the next command&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ mount -t proc proc /proc
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Next, let&amp;rsquo;s start a pointless, long-running process (in our container) that will hog memory and CPU cycles.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this command on your container&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ cat /dev/urandom | tr -dc &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#39;a-z&amp;#39;&lt;/span&gt; | head -c &lt;span style=&#34;color:#ae81ff&#34;&gt;1048576000&lt;/span&gt; | grep &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#39;[a-z]&amp;#39;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# the command explained:&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# cat /dev/urandom - read a stream of random data from /dev/urandom&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# tr -dc &amp;#39;a-z&amp;#39; - remove all but the characters specified in &amp;#39;a-z&amp;#39; from the first command&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# head -c 1048576000 - read the first 1 GB of the preceding output&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# grep &amp;#39;[a-z]&amp;#39; - match at least one letter from the preceding output&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Back on &lt;code&gt;htop&lt;/code&gt; (running on your host), sort processes by CPU percentage usage. You should see &lt;code&gt;grep --color=auto [a-z]&lt;/code&gt; at the top:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://user-images.githubusercontent.com/321040/222208515-72218846-ba02-4729-abf6-bdf12e35b91c.png&#34; alt=&#34;image&#34;&gt;&lt;/p&gt;
+&lt;p&gt;You&amp;rsquo;ll notice memory consumption grows steadily, depending on your RAM size. This process uses about 1.7% of my memory when left to run for 187 seconds. This usage grows until you either run out of memory or terminate the process. For sanity&amp;rsquo;s sake, kill the process. You can do this on htop or by running &lt;code&gt;kill -9 &amp;lt;LONG-RUNNING_PROCESS_PID&amp;gt;&lt;/code&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;implementing-cgroups&#34;&gt;Implementing cgroups&lt;/h2&gt;
+&lt;p&gt;We&amp;rsquo;ve experienced ungovernable chaos - let&amp;rsquo;s fix it with &lt;code&gt;cgroups&lt;/code&gt;.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;a href=&#34;https://man7.org/linux/man-pages/man7/cgroups.7.html&#34;&gt;&lt;code&gt;Cgroups&lt;/code&gt; (aka &lt;code&gt;Control Groups&lt;/code&gt;)&lt;/a&gt; is a Linux kernel feature that isolates, limits, and tracks resource usage of groups of processes. &lt;a href=&#34;https://kernel.googlesource.com/pub/scm/linux/kernel/git/glommer/memcg/+/cpu_stat/Documentation/cgroups/cgroups.txt&#34;&gt;You can read more about cgroups here&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;On your host, quit htop (confirm you&amp;rsquo;ve killed the long-running process first) and install &lt;code&gt;cgroup-tools&lt;/code&gt;.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this command on your host&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo apt-get install -y cgroup-tools
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Let&amp;rsquo;s create a new cgroup called sandbox and add our container to this new cgroup.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run these commands on your host&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# create new cgroup&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo cgcreate -g cpu,memory,blkio,devices,freezer:/sandbox
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# get the PID of our container bash process&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# that&amp;#39;s the PID of the child bash process under unshare (1552)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ pstree -p
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;init&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;1&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;─┬─init&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;4&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───&lt;span style=&#34;color:#f92672&#34;&gt;{&lt;/span&gt;init&lt;span style=&#34;color:#f92672&#34;&gt;}(&lt;/span&gt;5&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;        ├─init&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;512&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───init&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;513&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───bash&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;514&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───sudo&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;1549&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───sudo&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;1550&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───unshare&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;1551&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───bash&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;1552&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;        ├─init&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;570&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───init&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;571&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───bash&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;572&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;───pstree&lt;span style=&#34;color:#f92672&#34;&gt;(&lt;/span&gt;1695&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;        └─&lt;span style=&#34;color:#f92672&#34;&gt;{&lt;/span&gt;init&lt;span style=&#34;color:#f92672&#34;&gt;}(&lt;/span&gt;6&lt;span style=&#34;color:#f92672&#34;&gt;)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo cgclassify -g cpu,memory,blkio,devices,freezer:sandbox &lt;span style=&#34;color:#ae81ff&#34;&gt;1552&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# confirm that our container has been added to the sandbox cpu group&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ cat /sys/fs/cgroup/cpu/sandbox/tasks
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#ae81ff&#34;&gt;1552&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The &lt;code&gt;cgcreate&lt;/code&gt; command creates a new control group with cpu, memory, and several more resource controllers. &lt;a href=&#34;https://kernel.googlesource.com/pub/scm/linux/kernel/git/glommer/memcg/+/cpu_stat/Documentation/cgroups&#34;&gt;You can read more about cgroup resource controllers here&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Great! We have attached our container to our new cgroup. Now we can set resource limits. We&amp;rsquo;ll start by limiting memory. I have about 23.4 GB of memory available on my Linux host. Let&amp;rsquo;s set the limit to 128 MB, approximately ~0.5% of my total memory.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this command on your host&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo cgset -r memory.limit_in_bytes&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;128M sandbox
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# confirm that the limit is set&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ cgget -r memory.stat sandbox | grep memory_limit
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;hierarchical_memory_limit &lt;span style=&#34;color:#ae81ff&#34;&gt;134217728&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# 134217728 bytes = 128 MB&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Let&amp;rsquo;s restart the experiment - run htop on the host, then start the long-running process on the container.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this command on your container&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ cat /dev/urandom | tr -dc &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#39;a-z&amp;#39;&lt;/span&gt; | head -c &lt;span style=&#34;color:#ae81ff&#34;&gt;1048576000&lt;/span&gt; | grep &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#39;[a-z]&amp;#39;&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this command on your host&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo htop
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;These are the results from my &lt;code&gt;htop&lt;/code&gt;:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://user-images.githubusercontent.com/321040/222223829-708202fc-a49d-4d75-8c8e-5980ffb7c78d.png&#34; alt=&#34;image&#34;&gt;&lt;/p&gt;
+&lt;p&gt;Memory usage never goes above 0.5%. Memory limit achieved! CPU usage started at 100% and then dropped to 15%-20% as soon as the process maxed the memory limit. Let&amp;rsquo;s limit CPU usage to 5%.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;Note: In the htop output above, &lt;code&gt;cat /dev/urandom&lt;/code&gt; has 4.1% CPU usage, and &lt;code&gt;tr -dc a-z&lt;/code&gt; has 2.7% CPU usage.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# run this command on your host&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo cgset -r cpu.cfs_period_us&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#ae81ff&#34;&gt;100000&lt;/span&gt; -r cpu.cfs_quota_us&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;&lt;span style=&#34;color:#ae81ff&#34;&gt;5000&lt;/span&gt; sandbox
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Let&amp;rsquo;s break down how the above command accomplishes 5%. The parameter cpu.cfs_period_us sets the duration of a cgroup&amp;rsquo;s CPU scheduling period. The cpu.cfs_quota_us sets the maximum CPU time that all the tasks in a cgroup can run during one scheduling period. It doesn&amp;rsquo;t matter if there are two processes or a hundred; they will all adhere to this limit. Using these two parameters, you can summarize the CPU percentage limit as follows:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;cpu.cfs_quota_us \ cpu.cfs_period_us = CPU percentage limit.
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Substituting the values in the above command, we get:&lt;/p&gt;
+&lt;pre tabindex=&#34;0&#34;&gt;&lt;code&gt;5000 \ 100000 = 0.05 == 5/100 == 5%
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Let&amp;rsquo;s run the experiment one last time - run htop on the host, then start the long-running process on the container. Here&amp;rsquo;s my &lt;code&gt;htop&lt;/code&gt; output:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://user-images.githubusercontent.com/321040/222227792-7b92c2c9-fd2b-4dad-bfcc-a02da9fa84a3.png&#34; alt=&#34;image&#34;&gt;&lt;/p&gt;
+&lt;p&gt;Let&amp;rsquo;s examine the four container processes:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;process                     CPU usage
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;grep --color&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;auto &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#39;[a-z]&amp;#39;&lt;/span&gt;   2.7 %
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;cat /dev/urandom            1.3 % 
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;tr -dc &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#39;a-z&amp;#39;&lt;/span&gt;                0.7 %
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;head -c &lt;span style=&#34;color:#ae81ff&#34;&gt;1048576000&lt;/span&gt;          0.0 %
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;---------------------------------
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;total                       4.7 %
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;CPU percentage usage never goes above 5%! CPU limit achieved! We have successfully limited the CPU and memory resources available to our container.&lt;/p&gt;
+&lt;h3 id=&#34;next-episode-spoiler-alert&#34;&gt;Next Episode: Spoiler Alert&lt;/h3&gt;
+&lt;p&gt;It has taken four posts and several command line utilities to set up a resource-isolated, namespaced container. In the next episode, we&amp;rsquo;ll speed up our container creation process using &lt;code&gt;runc&lt;/code&gt;.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;Thanks for reading this far. We hope you enjoy this &lt;a href=&#34;https://www.youtube.com/watch?v=FE1vSjikzEQ&#34;&gt;small gift&lt;/a&gt;!&lt;/em&gt; 😀&lt;/p&gt;
+&lt;/blockquote&gt;
+</content>
+    </item>
+    
     <item>
       <title>Linux Containers Internals: Namespaces</title>
       <link>/posts/linux-containers-namespaces/</link>

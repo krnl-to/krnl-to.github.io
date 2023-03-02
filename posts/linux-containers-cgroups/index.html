@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+    <title>Linux Containers Internals: Cgroups :: krnl.to</title>
+  
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Introducing the Linux Control Groups" />
+<meta name="keywords" content="linux, containers, chroot, unshare, namespaces, cgroups" />
+<meta name="robots" content="noodp" />
+
+<link rel="canonical" href="/posts/linux-containers-cgroups/" />
+
+
+
+
+
+
+  
+  
+  
+  
+  
+  <link rel="stylesheet" href="/styles.css">
+
+
+
+
+
+
+
+  <link rel="shortcut icon" href="/img/theme-colors/orange.png">
+  <link rel="apple-touch-icon" href="/img/theme-colors/orange.png">
+
+
+
+<meta name="twitter:card" content="summary" />
+
+  
+    <meta name="twitter:site" content="" />
+  
+    <meta name="twitter:creator" content="ishuah_" />
+
+
+
+<meta property="og:locale" content="en" />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Linux Containers Internals: Cgroups">
+<meta property="og:description" content="Introducing the Linux Control Groups" />
+<meta property="og:url" content="/posts/linux-containers-cgroups/" />
+<meta property="og:site_name" content="krnl.to" />
+
+  
+  
+  <meta property="og:image" content="/">
+
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+
+
+  <meta property="article:published_time" content="2023-03-01 11:14:02 &#43;0300 EAT" />
+
+
+
+
+
+
+
+
+
+
+
+
+</head>
+<body class="orange">
+
+
+<div class="container center headings--one-size">
+
+  <header class="header">
+  <div class="header__inner">
+    <div class="header__logo">
+      <a href="/">
+  <div class="logo">
+    <strong>krnl</strong>.to
+  </div>
+</a>
+
+    </div>
+    
+      <ul class="menu menu--mobile">
+  <li class="menu__trigger">Menu&nbsp;▾</li>
+  <li>
+    <ul class="menu__dropdown">
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+        
+          <li><a href="/credits">Credits</a></li>
+        
+      
+      
+    </ul>
+  </li>
+</ul>
+
+    
+    
+  </div>
+  
+    <nav class="navigation-menu">
+  <ul class="navigation-menu__inner menu--desktop">
+    
+      
+        
+          <li><a href="/about">About</a></li>
+        
+      
+        
+          <li><a href="/bookmarks">Bookmarks</a></li>
+        
+      
+      
+        <li>
+          <ul class="menu">
+            <li class="menu__trigger">Show more&nbsp;▾</li>
+            <li>
+              <ul class="menu__dropdown">
+                
+                  
+                    <li><a href="/credits">Credits</a></li>
+                  
+                
+              </ul>
+            </li>
+          </ul>
+        </li>
+      
+    
+  </ul>
+</nav>
+
+  
+</header>
+
+
+  <div class="content">
+    
+<article class="post">
+  <h1 class="post-title">
+    <a href="/posts/linux-containers-cgroups/">Linux Containers Internals: Cgroups</a>
+  </h1>
+  <div class="post-meta">
+    
+      <time class="post-date">
+        2023-03-01 //
+        
+      </time>
+    
+    
+      <span class="post-author">Ishuah Kariuki</span>
+    
+    
+  </div>
+
+  
+    <span class="post-tags">
+      
+      #<a href="/tags/linux/">linux</a>&nbsp;
+      
+      #<a href="/tags/containers/">containers</a>&nbsp;
+      
+      #<a href="/tags/lci-series/">lci-series</a>&nbsp;
+      
+    </span>
+  
+  
+
+
+  
+
+  <div class="post-content"><div>
+        <h1 id="intro-to-linux-containers-internals-cgroups">Intro to Linux Containers Internals: cgroups<a href="#intro-to-linux-containers-internals-cgroups" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h1>
+<p>This post marks the fourth entry in the <a href="/tags/lci-series/">#lci-series</a>. In our <a href="../linux-containers-namespaces/">last post</a>, we achieved namespace isolation for the processes running in our container. However, these processes have access to all the available physical resources. For instance, a long-running process can use up all the available memory. This article will explore how to sandbox our container to a limited set of physical resources (RAM, CPU).</p>
+<h2 id="working-without-control-groups">Working Without Control Groups<a href="#working-without-control-groups" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>Let&rsquo;s first understand why cgroups exist. We&rsquo;ll start by installing and running htop on our host.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this on the host</span>
+</span></span><span style="display:flex;"><span>$ sudo apt-get install htop
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># after htop is installed, run it as root</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># this is so that you can kill rogue processes on the container</span>
+</span></span><span style="display:flex;"><span>$ sudo htop
+</span></span></code></pre></div><p>If your container is not running, start it by running this command in a separate terminal session. (This is the command from <a href="../linux-containers-namespaces/">Linux Containers Internals: Namespaces</a>)</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>$ sudo unshare --mount --uts --ipc --net --pid --user --fork --map-root-user chroot ubuntufs
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># once you&#39;re in the container, mount proc with the next command</span>
+</span></span><span style="display:flex;"><span>$ mount -t proc proc /proc
+</span></span></code></pre></div><p>Next, let&rsquo;s start a pointless, long-running process (in our container) that will hog memory and CPU cycles.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your container</span>
+</span></span><span style="display:flex;"><span>$ cat /dev/urandom | tr -dc <span style="color:#e6db74">&#39;a-z&#39;</span> | head -c <span style="color:#ae81ff">1048576000</span> | grep <span style="color:#e6db74">&#39;[a-z]&#39;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># the command explained:</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># cat /dev/urandom - read a stream of random data from /dev/urandom</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># tr -dc &#39;a-z&#39; - remove all but the characters specified in &#39;a-z&#39; from the first command</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># head -c 1048576000 - read the first 1 GB of the preceding output</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># grep &#39;[a-z]&#39; - match at least one letter from the preceding output</span>
+</span></span></code></pre></div><p>Back on <code>htop</code> (running on your host), sort processes by CPU percentage usage. You should see <code>grep --color=auto [a-z]</code> at the top:</p>
+<p><img src="https://user-images.githubusercontent.com/321040/222208515-72218846-ba02-4729-abf6-bdf12e35b91c.png" alt="image"></p>
+<p>You&rsquo;ll notice memory consumption grows steadily, depending on your RAM size. This process uses about 1.7% of my memory when left to run for 187 seconds. This usage grows until you either run out of memory or terminate the process. For sanity&rsquo;s sake, kill the process. You can do this on htop or by running <code>kill -9 &lt;LONG-RUNNING_PROCESS_PID&gt;</code>.</p>
+<h2 id="implementing-cgroups">Implementing cgroups<a href="#implementing-cgroups" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h2>
+<p>We&rsquo;ve experienced ungovernable chaos - let&rsquo;s fix it with <code>cgroups</code>.</p>
+<blockquote>
+<p><a href="https://man7.org/linux/man-pages/man7/cgroups.7.html"><code>Cgroups</code> (aka <code>Control Groups</code>)</a> is a Linux kernel feature that isolates, limits, and tracks resource usage of groups of processes. <a href="https://kernel.googlesource.com/pub/scm/linux/kernel/git/glommer/memcg/+/cpu_stat/Documentation/cgroups/cgroups.txt">You can read more about cgroups here</a>.</p>
+</blockquote>
+<p>On your host, quit htop (confirm you&rsquo;ve killed the long-running process first) and install <code>cgroup-tools</code>.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>$ sudo apt-get install -y cgroup-tools
+</span></span></code></pre></div><p>Let&rsquo;s create a new cgroup called sandbox and add our container to this new cgroup.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run these commands on your host</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># create new cgroup</span>
+</span></span><span style="display:flex;"><span>$ sudo cgcreate -g cpu,memory,blkio,devices,freezer:/sandbox
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># get the PID of our container bash process</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># that&#39;s the PID of the child bash process under unshare (1552)</span>
+</span></span><span style="display:flex;"><span>$ pstree -p
+</span></span><span style="display:flex;"><span>init<span style="color:#f92672">(</span>1<span style="color:#f92672">)</span>─┬─init<span style="color:#f92672">(</span>4<span style="color:#f92672">)</span>───<span style="color:#f92672">{</span>init<span style="color:#f92672">}(</span>5<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        ├─init<span style="color:#f92672">(</span>512<span style="color:#f92672">)</span>───init<span style="color:#f92672">(</span>513<span style="color:#f92672">)</span>───bash<span style="color:#f92672">(</span>514<span style="color:#f92672">)</span>───sudo<span style="color:#f92672">(</span>1549<span style="color:#f92672">)</span>───sudo<span style="color:#f92672">(</span>1550<span style="color:#f92672">)</span>───unshare<span style="color:#f92672">(</span>1551<span style="color:#f92672">)</span>───bash<span style="color:#f92672">(</span>1552<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        ├─init<span style="color:#f92672">(</span>570<span style="color:#f92672">)</span>───init<span style="color:#f92672">(</span>571<span style="color:#f92672">)</span>───bash<span style="color:#f92672">(</span>572<span style="color:#f92672">)</span>───pstree<span style="color:#f92672">(</span>1695<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>        └─<span style="color:#f92672">{</span>init<span style="color:#f92672">}(</span>6<span style="color:#f92672">)</span>
+</span></span><span style="display:flex;"><span>$ sudo cgclassify -g cpu,memory,blkio,devices,freezer:sandbox <span style="color:#ae81ff">1552</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># confirm that our container has been added to the sandbox cpu group</span>
+</span></span><span style="display:flex;"><span>$ cat /sys/fs/cgroup/cpu/sandbox/tasks
+</span></span><span style="display:flex;"><span><span style="color:#ae81ff">1552</span>
+</span></span></code></pre></div><p>The <code>cgcreate</code> command creates a new control group with cpu, memory, and several more resource controllers. <a href="https://kernel.googlesource.com/pub/scm/linux/kernel/git/glommer/memcg/+/cpu_stat/Documentation/cgroups">You can read more about cgroup resource controllers here</a>.</p>
+<p>Great! We have attached our container to our new cgroup. Now we can set resource limits. We&rsquo;ll start by limiting memory. I have about 23.4 GB of memory available on my Linux host. Let&rsquo;s set the limit to 128 MB, approximately ~0.5% of my total memory.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>$ sudo cgset -r memory.limit_in_bytes<span style="color:#f92672">=</span>128M sandbox
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># confirm that the limit is set</span>
+</span></span><span style="display:flex;"><span>$ cgget -r memory.stat sandbox | grep memory_limit
+</span></span><span style="display:flex;"><span>hierarchical_memory_limit <span style="color:#ae81ff">134217728</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 134217728 bytes = 128 MB</span>
+</span></span></code></pre></div><p>Let&rsquo;s restart the experiment - run htop on the host, then start the long-running process on the container.</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your container</span>
+</span></span><span style="display:flex;"><span>$ cat /dev/urandom | tr -dc <span style="color:#e6db74">&#39;a-z&#39;</span> | head -c <span style="color:#ae81ff">1048576000</span> | grep <span style="color:#e6db74">&#39;[a-z]&#39;</span>
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>$ sudo htop
+</span></span></code></pre></div><p>These are the results from my <code>htop</code>:</p>
+<p><img src="https://user-images.githubusercontent.com/321040/222223829-708202fc-a49d-4d75-8c8e-5980ffb7c78d.png" alt="image"></p>
+<p>Memory usage never goes above 0.5%. Memory limit achieved! CPU usage started at 100% and then dropped to 15%-20% as soon as the process maxed the memory limit. Let&rsquo;s limit CPU usage to 5%.</p>
+<blockquote>
+<p>Note: In the htop output above, <code>cat /dev/urandom</code> has 4.1% CPU usage, and <code>tr -dc a-z</code> has 2.7% CPU usage.</p>
+</blockquote>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span><span style="color:#75715e"># run this command on your host</span>
+</span></span><span style="display:flex;"><span>$ sudo cgset -r cpu.cfs_period_us<span style="color:#f92672">=</span><span style="color:#ae81ff">100000</span> -r cpu.cfs_quota_us<span style="color:#f92672">=</span><span style="color:#ae81ff">5000</span> sandbox
+</span></span></code></pre></div><p>Let&rsquo;s break down how the above command accomplishes 5%. The parameter cpu.cfs_period_us sets the duration of a cgroup&rsquo;s CPU scheduling period. The cpu.cfs_quota_us sets the maximum CPU time that all the tasks in a cgroup can run during one scheduling period. It doesn&rsquo;t matter if there are two processes or a hundred; they will all adhere to this limit. Using these two parameters, you can summarize the CPU percentage limit as follows:</p>
+<pre tabindex="0"><code>cpu.cfs_quota_us \ cpu.cfs_period_us = CPU percentage limit.
+</code></pre><p>Substituting the values in the above command, we get:</p>
+<pre tabindex="0"><code>5000 \ 100000 = 0.05 == 5/100 == 5%
+</code></pre><p>Let&rsquo;s run the experiment one last time - run htop on the host, then start the long-running process on the container. Here&rsquo;s my <code>htop</code> output:</p>
+<p><img src="https://user-images.githubusercontent.com/321040/222227792-7b92c2c9-fd2b-4dad-bfcc-a02da9fa84a3.png" alt="image"></p>
+<p>Let&rsquo;s examine the four container processes:</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>process                     CPU usage
+</span></span><span style="display:flex;"><span>grep --color<span style="color:#f92672">=</span>auto <span style="color:#e6db74">&#39;[a-z]&#39;</span>   2.7 %
+</span></span><span style="display:flex;"><span>cat /dev/urandom            1.3 % 
+</span></span><span style="display:flex;"><span>tr -dc <span style="color:#e6db74">&#39;a-z&#39;</span>                0.7 %
+</span></span><span style="display:flex;"><span>head -c <span style="color:#ae81ff">1048576000</span>          0.0 %
+</span></span><span style="display:flex;"><span>---------------------------------
+</span></span><span style="display:flex;"><span>total                       4.7 %
+</span></span></code></pre></div><p>CPU percentage usage never goes above 5%! CPU limit achieved! We have successfully limited the CPU and memory resources available to our container.</p>
+<h3 id="next-episode-spoiler-alert">Next Episode: Spoiler Alert<a href="#next-episode-spoiler-alert" class="hanchor" ariaLabel="Anchor">&#8983;</a> </h3>
+<p>It has taken four posts and several command line utilities to set up a resource-isolated, namespaced container. In the next episode, we&rsquo;ll speed up our container creation process using <code>runc</code>.</p>
+<blockquote>
+<p><em>Thanks for reading this far. We hope you enjoy this <a href="https://www.youtube.com/watch?v=FE1vSjikzEQ">small gift</a>!</em> 😀</p>
+</blockquote>
+
+      </div></div>
+
+  
+    
+<div class="pagination">
+    <div class="pagination__title">
+        <span class="pagination__title-h">Read other posts</span>
+        <hr />
+    </div>
+    <div class="pagination__buttons">
+        
+        
+        <span class="button next">
+            <a href="/posts/linux-containers-namespaces/">
+                <span class="button__text">Linux Containers Internals: Namespaces</span>
+                <span class="button__icon">→</span>
+            </a>
+        </span>
+        
+    </div>
+</div>
+
+  
+
+  
+    
+
+  
+</article>
+
+  </div>
+
+  
+    <footer class="footer">
+  <div class="footer__inner">
+   <small id="quote">___<br/><em>"The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise."</em> &mdash;&mdash; Edsger W. Dijkstra</small>
+  </div>
+</footer>
+
+
+
+
+
+
+<script type="text/javascript" src="/bundle.min.js"></script>
+
+
+<script>
+
+
+let quotes = [
+  {
+    say: "The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "We should forget about small efficiencies, say about 97% of the time: premature optimization is the root of all evil",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Simplicity and elegance are unpopular because they require hard work and discipline to achieve and education to be appreciated.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "Beauty is our business.",
+    person: "Edsger W. Dijkstra"
+  },
+  {
+    say: "The unavoidable price of reliability is simplicity.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "I call it my billion-dollar mistake. It was the invention of the null reference in 1965.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Inside every large program is a small program struggling to get out.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "You cannot teach beginners top-down programming, because they don't know which end is up.",
+    person: "Tony Hoare"
+  },
+  {
+    say: "Talk is cheap, show me the code.",
+    person: "Linus Torvalds"
+  },
+  {
+    say: "Computers are good at following instructions, but not at reading your mind.",
+    person: "Donald Knuth"
+  },
+  {
+    say: "Make everything as simple as possible but not simpler.",
+    person: "Albert Einstein"
+  },
+  {
+    say: "One of my most productive days was throwing away 1,000 lines of code.",
+    person: "Ken Thompson"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "A ship in port is safe, but that's not what ships are built for.",
+    person: "Grace Hopper"
+  },
+  {
+    say: "It's hardware that makes a machine fast. It's software that makes a fast machine slow.",
+    person: "Craig Reucassel"
+  },
+  {
+    say: "There's an old story about the person who wished his computer were as easy to use as his telephone. That wish has come true, since I no longer know how to use my telephone.",
+    person: "Bjarne Stroustrup"
+  },
+]
+
+let i = (new Date()).getSeconds() % quotes.length
+let quote = quotes[i]
+
+document.querySelector("small#quote").setHTML(`___<br/><em>"${quote.say}"</em> &mdash;&mdash; ${quote.person}`)
+</script>
+
+
+
+
+  
+</div>
+
+</body>
+</html>
