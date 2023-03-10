@@ -7,7 +7,75 @@
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Anthony Nandaa</copyright>
-    <lastBuildDate>Wed, 01 Mar 2023 11:14:02 +0300</lastBuildDate><atom:link href="/tags/containers/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 10 Mar 2023 11:14:02 +0300</lastBuildDate><atom:link href="/tags/containers/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Linux Containers Internals: runc</title>
+      <link>/posts/linux-containers-runc/</link>
+      <pubDate>Fri, 10 Mar 2023 11:14:02 +0300</pubDate>
+      
+      <guid>/posts/linux-containers-runc/</guid>
+      <description>Intro to Linux Containers Internals: runc At this point of our #lci-series, we have seen how to hack around and create containers. In this post, we will introduce some order and standardization. We aimed to demonstrate what goes on under the hood, just one abstraction layer below &amp;ndash; a scratch on the surface.
+Open Container Initiative (OCI) The OCI was set up as an open governance structure to create open industry standards around container formats and runtimes.</description>
+      <content>&lt;h1 id=&#34;intro-to-linux-containers-internals-runc&#34;&gt;Intro to Linux Containers Internals: runc&lt;/h1&gt;
+&lt;p&gt;At this point of our &lt;a href=&#34;/tags/lci-series/&#34;&gt;#lci-series&lt;/a&gt;, we have seen how to &lt;em&gt;hack around&lt;/em&gt; and create containers. In this post, we will introduce some order and standardization. We aimed to demonstrate what goes on under the hood, just one abstraction layer below &amp;ndash; a scratch on the surface.&lt;/p&gt;
+&lt;h2 id=&#34;open-container-initiative-oci&#34;&gt;Open Container Initiative (OCI)&lt;/h2&gt;
+&lt;p&gt;The &lt;a href=&#34;https://opencontainers.org/&#34;&gt;OCI&lt;/a&gt; was set up as an open governance structure to create open industry standards around container formats and runtimes. It develops specifications for standards on Operating System and application containers.&lt;/p&gt;
+&lt;p&gt;OCI has two specs, an &lt;a href=&#34;https://github.com/opencontainers/image-spec&#34;&gt;&lt;em&gt;Image&lt;/em&gt; spec&lt;/a&gt; and a &lt;a href=&#34;https://github.com/opencontainers/runtime-spec&#34;&gt;&lt;em&gt;Runtime&lt;/em&gt; spec&lt;/a&gt;. The &lt;em&gt;Image spec&lt;/em&gt; defines the archive format of OCI container images, which consists of a manifest, an image index, a set of filesystem layers and a configuration. The &lt;em&gt;Runtime spec&lt;/em&gt; specifies the configuration, execution environment and lifecycle of a container.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://user-images.githubusercontent.com/261265/224251228-5dc72104-5f04-47a2-a00a-d28ba55fc63f.png&#34; alt=&#34;oci&#34;&gt;&lt;/p&gt;
+&lt;h2 id=&#34;what-is-runc&#34;&gt;What is &lt;code&gt;runc&lt;/code&gt;?&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;runc&lt;/code&gt; is a CLI tool for spawning and running containers according to the OCI specification. The diagram below demonstrates how &lt;code&gt;runc&lt;/code&gt; fits in the whole &amp;ldquo;container platform&amp;rdquo; ecosystem.&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://user-images.githubusercontent.com/261265/224251117-51a27866-41dd-4614-9d5e-a8105573c936.png&#34; alt=&#34;runc_eco&#34;&gt;&lt;/p&gt;
+&lt;h2 id=&#34;create-a-container-with-runc&#34;&gt;Create a container with &lt;code&gt;runc&lt;/code&gt;&lt;/h2&gt;
+&lt;p&gt;I know this is the moment you&amp;rsquo;ve been waiting for; let&amp;rsquo;s get to it!&lt;/p&gt;
+&lt;p&gt;We will pick up from where we were in our last post. We used &lt;code&gt;debootstrap&lt;/code&gt; to get a &lt;em&gt;full root filesystem&lt;/em&gt; that formed the basis of our container. We will re-use the same filesystem here.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;If you are joining us mid-journey, take a glance at the previous post on &lt;a href=&#34;../linux-container-intro-chroot-again/&#34;&gt;&lt;em&gt;chroot&lt;/em&gt;&lt;/a&gt;; it&amp;rsquo;s a brief one.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;So, I&amp;rsquo;m here where I have my &lt;code&gt;ubuntufs&lt;/code&gt; directory within &lt;code&gt;$HOME&lt;/code&gt;, looking like this and I&amp;rsquo;m on &lt;a href=&#34;https://learn.microsoft.com/en-us/windows/wsl/about&#34;&gt;WSL2&lt;/a&gt; on a Windows machine:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;~/container-intro$ ls ubuntufs/
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;bin  boot  dev  etc  home  lib  lib32  lib64  libx32  media ...
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;We will first build &lt;code&gt;runc&lt;/code&gt; from sources. So, first start by &lt;a href=&#34;https://go.dev/doc/install&#34;&gt;installing Go&lt;/a&gt; on your Linux system.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ rm -rf /usr/local/go &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&amp;amp;&lt;/span&gt; tar -C /usr/local -xzf go1.20.2.linux-amd64.tar.gz
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ mkdir ~/.go &lt;span style=&#34;color:#75715e&#34;&gt;# just my preference, you can name it as you wish&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# update $PATH&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# add this to your .bashrc (or equivalent file)&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;export PATH&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;$PATH:/usr/local/go/bin
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# setup $GOPATH&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;export GOPATH&lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt;$HOME/.go
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# chek that all is good&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ go version
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;I&amp;rsquo;m on a 1 version older Go by the time of this writing, but it shouldn&amp;rsquo;t matter for now, at least in March 2023.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;~/container-intro$ go version
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;go version go1.19.4 linux/amd64
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Next, let&amp;rsquo;s install &lt;code&gt;runc&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ go install github.com/opencontainers/runc@latest
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# check version, it&amp;#39;s marked unknown since we installed&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;# the latest from &amp;#34;dev&amp;#34; branch&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ $GOPATH/bin/runc --version
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;runc version unknown
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;spec: 1.0.2-dev
+&lt;/span&gt;&lt;/span&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;go: go1.19.4
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Generate a template &lt;em&gt;runtime spec&lt;/em&gt; that will be used to spin off our container:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ $GOPATH/bin/runc spec
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;A &lt;code&gt;config.json&lt;/code&gt; file will be generated with the spec. I&amp;rsquo;ll draw your attention to fields like &lt;code&gt;mounts&lt;/code&gt; and &lt;code&gt;linux.namespaces&lt;/code&gt;. Do you see some familiar stuff from what we have covered in the series?&lt;/p&gt;
+&lt;p&gt;In the &lt;code&gt;config.json&lt;/code&gt; file, update &lt;code&gt;root.path&lt;/code&gt; to the name of your filesystem directory, it is &lt;code&gt;ubuntufs&lt;/code&gt; for my case.&lt;/p&gt;
+&lt;p&gt;Next, let&amp;rsquo;s run a sample container:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre tabindex=&#34;0&#34; style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;&#34;&gt;&lt;code class=&#34;language-bash&#34; data-lang=&#34;bash&#34;&gt;&lt;span style=&#34;display:flex;&#34;&gt;&lt;span&gt;$ sudo $GOPATH/bin/runc run my-cont
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;On a new tab on the host, you can run &lt;code&gt;sudo $GOPATH/bin/runc run list&lt;/code&gt;, you should see the container listed:&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;https://user-images.githubusercontent.com/261265/224249763-84856d2f-6bcb-4172-a956-55a47d7d7ebe.png&#34; alt=&#34;image&#34;&gt;&lt;/p&gt;
+&lt;p&gt;This gets you in the container shell the same way we&amp;rsquo;ve been doing in the previous posts, but this time, it&amp;rsquo;s in a standard and spec-compliant way. Go ahead and play around with it, knock yourself off with things like &lt;code&gt;ps&lt;/code&gt;, &lt;code&gt;htop&lt;/code&gt;, test the limits and more.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;So far, our filesystem is readonly, if you want to change that you can update &lt;code&gt;root.readonly&lt;/code&gt; in the &lt;code&gt;config.json&lt;/code&gt; file.&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;Get more details on &lt;a href=&#34;https://github.com/opencontainers/runc&#34;&gt;&lt;code&gt;runc&lt;/code&gt; here&lt;/a&gt;.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;em&gt;Sorry, no spoiler alerts on where our flight is headed next for this series. Maybe networking, maybe dissecting an OCI image, maybe explaining the whole trip of what happens when you run a command like &lt;code&gt;docker run&lt;/code&gt;, how about &lt;code&gt;docker pull&lt;/code&gt;? Stick with us!&lt;/em&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+&lt;p&gt;&lt;em&gt;For reading thus far, the custom dictates you have to &lt;a href=&#34;https://www.youtube.com/watch?v=Z7eRU7C-ti8&#34;&gt;pick your gift here&lt;/a&gt;&lt;/em&gt; 🙂 &lt;em&gt;Thanks for reading, see you next!&lt;/em&gt;&lt;/p&gt;
+</content>
+    </item>
+    
     <item>
       <title>Linux Containers Internals: Cgroups</title>
       <link>/posts/linux-containers-cgroups/</link>
